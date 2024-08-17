@@ -1,7 +1,9 @@
 from django.db import models
 from django.core.validators import FileExtensionValidator
 from django.contrib.auth.models import User
+from django.urls import reverse
 from mptt.models import MPTTModel, TreeForeignKey
+from apps.services.utils import unique_slugify
 
 
 class Category(MPTTModel):
@@ -29,9 +31,22 @@ class Category(MPTTModel):
         verbose_name_plural = 'Категории'
         db_table = 'app_categories'
 
+    def get_absolute_url(self):
+        """
+        Получаем прямую ссылку на категорию
+        """
+        return reverse('post_by_category', kwargs={'slug': self.slug})
+
     def __str__(self):
         """Возвращение заголовка категории"""
         return self.title
+
+
+class PostManager(models.Manager):
+    """Кастомный менеджер для модели постов. Авто-фильтрация по полю status"""
+    def get_queryset(self):
+        """Выводятся посты только со статусом = published"""
+        return super().get_queryset().select_related('author', 'category').filter(status='published')
 
 
 class Post(models.Model):
@@ -53,7 +68,7 @@ class Post(models.Model):
         default='default.jpg',
         verbose_name='Изображение записи',
         blank=True,
-        upload_to='images/thumbnails/',
+        upload_to='images/thumbnails/%Y/%m/%d/',
         validators=[FileExtensionValidator(allowed_extensions=('png', 'jpg', 'webp', 'jpeg', 'gif'))]
     )
     status = models.CharField(choices=STATUS_OPTIONS, default='published', verbose_name='Статус записи', max_length=10)
@@ -65,6 +80,9 @@ class Post(models.Model):
                                 related_name='updater_posts', blank=True)
     fixed = models.BooleanField(verbose_name='Прикреплено', default=False)
 
+    objects = models.Manager()
+    custom = PostManager()
+
     class Meta:
         db_table = 'blog_post'
         ordering = ['-fixed', '-create']
@@ -74,3 +92,14 @@ class Post(models.Model):
 
     def __str__(self):
         return self.title
+
+    def get_absolute_url(self):
+        """
+        Получаем прямую ссылку на статью
+        """
+        return reverse('post_detail', kwargs={'slug': self.slug})
+
+    def save(self, *args, **kwargs):
+        """При сохранении генерируем слаг и проверяем на уникальность"""
+        self.slug = unique_slugify(self, self.title, self.slug)
+        super().save(*args, **kwargs)
