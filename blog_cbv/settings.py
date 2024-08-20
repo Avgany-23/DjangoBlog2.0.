@@ -10,7 +10,11 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.1/ref/settings/
 """
 
+import os
+from dotenv import load_dotenv
 from pathlib import Path
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -23,9 +27,9 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-s85uvx+f3g#vp@^+3q)e-@w(q)u$&0l@hcf8r0_&&cc63xswr9'
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = False
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ['127.0.0.1']
 
 INTERNAL_IPS = [
     '127.0.0.1', # New
@@ -40,10 +44,15 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
-    'apps.blog.apps.BlogConfig',
+    'apps.blog.apps.BlogConfig',            # Основное приложение
     'mptt',                                 # Для древовидных моделей
-    'django_mptt_admin',
-    'debug_toolbar',                        # Для оптимизации SQL запросов (N+1)
+    'django_mptt_admin',                    # Для отображения древовидных моделей в админ панели
+    'debug_toolbar',                        # Для дебагера (отслеживать SQL запросы)
+    'apps.accounts.apps.AccountsConfig',    # Для аккаунтов
+    'taggit',                               # Для тегов
+    'django_recaptcha',                     # Для reCAPTCHA
+    'ckeditor_uploader',                    # Текстовый редактор на сайте
+    'ckeditor',                             # Текстовый редактор на сайте
 ]
 
 MIDDLEWARE = [
@@ -55,6 +64,7 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'debug_toolbar.middleware.DebugToolbarMiddleware',
+    'apps.accounts.middleware.ActiveUserMiddleware',
 ]
 
 ROOT_URLCONF = 'blog_cbv.urls'
@@ -77,6 +87,12 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'blog_cbv.wsgi.application'
 
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.filebased.FileBasedCache',
+        'LOCATION': (BASE_DIR / 'cache'),
+    }
+}
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases
@@ -123,14 +139,26 @@ USE_TZ = True
 # Static files (CSS, JavaScript, Images)
 # https://docs.djangoproject.com/en/5.1/howto/static-files/
 
-STATIC_URL = '/static/'                 # URL, по которому будут доступны статические файлы
-STATIC_ROOT = (BASE_DIR / 'static')     # абсолютный путь к директории, где будут храниться статические файлы
+STATIC_URL = '/static/'                          # URL, по которому будут доступны статические файлы
+STATIC_ROOT = (BASE_DIR / 'static')              # абсолютный путь к директории, где будут храниться статические файлы
+STATICFILES_DIRS = [BASE_DIR / 'templates/js/']  # Путь до статичных файлов JS
 
-MEDIA_URL = '/media/'                   # URL, по которому будут доступны медийные файлы
-MEDIA_ROOT = (BASE_DIR / 'media')       # абсолютный путь к директории, где будут храниться медийные файлы
+MEDIA_URL = '/media/'                            # URL, по которому будут доступны медийные файлы
+MEDIA_ROOT = (BASE_DIR / 'media')                # абсолютный путь к директории, где будут храниться медийные файлы
 
+CKEDITOR_UPLOAD_PATH = "uploads/"                # Для текстового редактора
+CKEDITOR_CONFIGS = {                             # Конфиг для текстового редактора
+    'awesome_ckeditor': {
+        'toolbar': 'full',
+        'height': 250,
+    },
+}
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# Для ReCAPTCHA
+RECAPTCHA_PUBLIC_KEY = str(os.getenv('RECAPTCHA_PUBLIC_KEY_'))      # ключ сайта
+RECAPTCHA_PRIVATE_KEY = str(os.getenv('RECAPTCHA_PRIVATE_KEY_'))    # секретный ключ

@@ -3,6 +3,8 @@ from django.core.validators import FileExtensionValidator
 from django.contrib.auth.models import User
 from django.urls import reverse
 from mptt.models import MPTTModel, TreeForeignKey
+from taggit.managers import TaggableManager
+from ckeditor.fields import RichTextField
 from apps.services.utils import unique_slugify
 
 
@@ -32,9 +34,7 @@ class Category(MPTTModel):
         db_table = 'app_categories'
 
     def get_absolute_url(self):
-        """
-        Получаем прямую ссылку на категорию
-        """
+        """Получаем прямую ссылку на категорию"""
         return reverse('post_by_category', kwargs={'slug': self.slug})
 
     def __str__(self):
@@ -50,9 +50,7 @@ class PostManager(models.Manager):
 
 
 class Post(models.Model):
-    """
-    Модель постов для блога
-    """
+    """Модель постов для блога"""
 
     STATUS_OPTIONS = (
         ('published', 'Опубликовано'),
@@ -61,8 +59,8 @@ class Post(models.Model):
 
     title = models.CharField(verbose_name='Название записи', max_length=255)
     slug = models.SlugField(verbose_name='URL', max_length=255, blank=True)
-    description = models.TextField(verbose_name='Краткое описание', max_length=500)
-    text = models.TextField(verbose_name='Полный текст записи')
+    description = RichTextField(config_name='awesome_ckeditor', verbose_name='Краткое описание', max_length=500)
+    text = RichTextField(config_name='awesome_ckeditor', verbose_name='Полный текст записи')
     category = TreeForeignKey('Category', on_delete=models.PROTECT, related_name='posts', verbose_name='Категория')
     thumbnail = models.ImageField(
         default='default.jpg',
@@ -80,6 +78,8 @@ class Post(models.Model):
                                 related_name='updater_posts', blank=True)
     fixed = models.BooleanField(verbose_name='Прикреплено', default=False)
 
+    tags = TaggableManager()
+
     objects = models.Manager()
     custom = PostManager()
 
@@ -94,12 +94,72 @@ class Post(models.Model):
         return self.title
 
     def get_absolute_url(self):
-        """
-        Получаем прямую ссылку на статью
-        """
+        """Получаем прямую ссылку на статью"""
         return reverse('post_detail', kwargs={'slug': self.slug})
 
     def save(self, *args, **kwargs):
         """При сохранении генерируем слаг и проверяем на уникальность"""
         self.slug = unique_slugify(self, self.title, self.slug)
         super().save(*args, **kwargs)
+
+    def get_sum_rating(self):
+        return sum([rating.value for rating in self.ratings.all()])
+
+
+class Comment(MPTTModel):
+    """Модель древовидных комментариев"""
+
+    STATUS_OPTIONS = (
+        ('published', 'Опубликовано'),
+        ('draft', 'Черновик')
+    )
+
+    post = models.ForeignKey(Post, on_delete=models.CASCADE,
+                             verbose_name='Запись', related_name='comments')
+    author = models.ForeignKey(User, verbose_name='Автор комментария',
+                               on_delete=models.CASCADE, related_name='comments_author')
+    content = models.TextField(verbose_name='Текст комментария', max_length=3000)
+    time_create = models.DateTimeField(verbose_name='Время добавления', auto_now_add=True)
+    time_update = models.DateTimeField(verbose_name='Время обновления', auto_now=True)
+    status = models.CharField(choices=STATUS_OPTIONS, default='published',
+                              verbose_name='Статус поста', max_length=10)
+    parent = TreeForeignKey(
+        to='self',
+        verbose_name='Родительский комментарий',
+        null=True,
+        blank=True,
+        related_name='children',
+        on_delete=models.CASCADE
+    )
+
+    class MTTMeta:
+        """Сортировка по вложенности"""
+        order_insertion_by = ('-time_create',)
+
+    class Meta:
+        """Сортировка, название модели в админ панели, таблица в данными"""
+        ordering = ['-time_create']
+        verbose_name = 'Комментарий'
+        verbose_name_plural = 'Комментарии'
+
+    def __str__(self):
+        return f'{self.author}:{self.content}'
+
+
+class Rating(models.Model):
+    """ Модель рейтинга: Лайк - Дизлайк"""
+    post = models.ForeignKey(to=Post, verbose_name='Запись', on_delete=models.CASCADE, related_name='ratings')
+    user = models.ForeignKey(to=User, verbose_name='Пользователь', on_delete=models.CASCADE, blank=True, null=True)
+    value = models.IntegerField(verbose_name='Значение', choices=[(1, 'Нравится'), (-1, 'Не нравится')])
+    time_create = models.DateTimeField(verbose_name='Время добавления', auto_now_add=True)
+    ip_address = models.GenericIPAddressField(verbose_name='IP Адрес')
+
+    class Meta:
+        unique_together = ('post', 'ip_address')
+        ordering = ('-time_create',)
+        indexes = [models.Index(fields=['-time_create', 'value'])]
+        verbose_name = 'Рейтинг'
+        verbose_name_plural = 'Рейтинги'
+
+    def __str__(self):
+        return self.post.title
